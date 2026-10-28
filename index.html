@@ -20,7 +20,7 @@ button:active{opacity:.75}.primary,.upload{background:#fff;color:#000;border-col
 #files,#projectFile{display:none}
 #grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(3px,1vw,8px)}
 .post{min-width:0}
-.tile{aspect-ratio:1;position:relative;background:#171717;overflow:hidden;border:1px solid #222;cursor:grab;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.tile{aspect-ratio:1;position:relative;background:#171717;overflow:hidden;border:1px solid #222;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none; -webkit-touch-callout:none}
 .tile img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
 .tile.selected{outline:2px solid #fff;outline-offset:-2px}
 .num{position:absolute;top:5px;left:5px;background:#000d;color:#fff;padding:4px 5px;font:10px "Courier New",monospace}
@@ -49,7 +49,7 @@ footer{text-align:center;font:12px "Courier New",monospace;color:#888;margin:28p
 <div><p class="kicker">A little feed laboratory</p><h1>117's feed.</h1><p>Your grid. Your order. Your photos.</p></div>
 <label class="upload">＋ ADD PHOTOS<input id="files" type="file" accept="image/*" multiple></label>
 </header>
-<p>With Apple Pencil, touch a photo and drag it straight to a new spot. With your finger, press and hold, then drag. Tap a photo to add its caption.</p>
+<p>With Apple Pencil, drag a photo straight to a new spot. Touch a photo with your finger, hold briefly, then drag. Scrolling works outside the photo tiles. Tap a photo to add its caption.</p>
 <div id="grid"><div class="empty">YOUR GRID STARTS HERE<br><br>＋ ADD YOUR PHOTOS</div></div>
 <div class="controls">
 <button id="left">← MOVE LEFT</button><button id="right">MOVE RIGHT →</button><button id="remove">REMOVE PHOTO</button><button id="export" class="primary">EXPORT GRID PNG</button>
@@ -97,40 +97,55 @@ function render(){
   t.addEventListener('dragover',e=>{e.preventDefault();e.dataTransfer.dropEffect='move'});
   t.addEventListener('drop',e=>{e.preventDefault();const from=dragFrom>=0?dragFrom:Number(e.dataTransfer.getData('text/plain'));reorder(from,i)});
   t.addEventListener('dragend',()=>dragFrom=-1);
-  let sx=0,sy=0;
+  let sx=0,sy=0,activePointer=null;
   t.addEventListener('pointerdown',e=>{
    if(e.pointerType==='mouse')return;
    sx=e.clientX;sy=e.clientY;longActive=false;clearTimeout(longTimer);
-   // Apple Pencil: begin dragging immediately. Finger touch: use a short long-press.
+   activePointer=e.pointerId;
+   // Pencil starts immediately; finger starts after a short press.
    if(e.pointerType==='pen'){
-    longActive=true;dragFrom=i;t.style.opacity='.45';t.style.touchAction='none';
+    e.preventDefault();
+    longActive=true;dragFrom=i;t.style.opacity='.45';
     try{t.setPointerCapture(e.pointerId)}catch(_){}
-    toast('Move the Apple Pencil to another photo');
+    toast('Drag to another photo');
    }else{
-    longTimer=setTimeout(()=>{longActive=true;dragFrom=i;t.style.opacity='.45';t.style.touchAction='none';toast('Drag to another photo')},350);
+    longTimer=setTimeout(()=>{
+     longActive=true;dragFrom=i;t.style.opacity='.45';
+     try{t.setPointerCapture(e.pointerId)}catch(_){}
+     toast('Drag to another photo');
+    },300);
    }
   });
   t.addEventListener('pointermove',e=>{
-   if(e.pointerType==='mouse')return;
-   if(!longActive&&Math.hypot(e.clientX-sx,e.clientY-sy)>12)clearTimeout(longTimer);
+   if(e.pointerType==='mouse'||(activePointer!==null&&e.pointerId!==activePointer))return;
+   if(!longActive&&Math.hypot(e.clientX-sx,e.clientY-sy)>10)clearTimeout(longTimer);
    if(longActive){
+    e.preventDefault();
     const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('.tile');
     document.querySelectorAll('.drop-target').forEach(el=>el.classList.remove('drop-target'));
     if(target&&target!==t)target.classList.add('drop-target');
    }
   });
-  t.addEventListener('pointerup',e=>{
-   clearTimeout(longTimer);if(e.pointerType==='mouse')return;
+  const finishDrag=e=>{
+   clearTimeout(longTimer);
+   if(e.pointerType==='mouse')return;
    if(longActive){
     const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('.tile');
     const to=target?Number(target.dataset.index):-1;
-    t.style.opacity='';t.style.touchAction='';
+    t.style.opacity='';
     document.querySelectorAll('.drop-target').forEach(el=>el.classList.remove('drop-target'));
-    if(to>=0&&to!==i)reorder(i,to);else{selected=i;syncCaption();render()}
-    setTimeout(()=>longActive=false,60);
+    if(to>=0&&to!==i)reorder(i,to);
+    else {selected=i;syncCaption();render()}
    }
+   activePointer=null;
+   setTimeout(()=>longActive=false,60);
+  };
+  t.addEventListener('pointerup',finishDrag);
+  t.addEventListener('pointercancel',e=>{
+   clearTimeout(longTimer);t.style.opacity='';
+   document.querySelectorAll('.drop-target').forEach(el=>el.classList.remove('drop-target'));
+   activePointer=null;longActive=false;
   });
-  t.addEventListener('pointercancel',()=>{clearTimeout(longTimer);t.style.opacity='';t.style.touchAction='';longActive=false});
   post.appendChild(t);const mini=document.createElement('div');mini.className='caption-mini';mini.textContent=p.caption||'＋ add caption';post.appendChild(mini);g.appendChild(post);
  });
  syncCaption();$('status').textContent=photos.length+' photos · '+Math.ceil(photos.length/3)+' rows · saved locally on this device'
