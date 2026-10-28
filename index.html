@@ -49,7 +49,7 @@ footer{text-align:center;font:12px "Courier New",monospace;color:#888;margin:28p
 <div><p class="kicker">A little feed laboratory</p><h1>117's feed.</h1><p>Your grid. Your order. Your photos.</p></div>
 <label class="upload">＋ ADD PHOTOS<input id="files" type="file" accept="image/*" multiple></label>
 </header>
-<p>Drag to rearrange. On iPad, press and hold a photo, then drag it. Tap a photo to add its caption.</p>
+<p>With Apple Pencil, touch a photo and drag it straight to a new spot. With your finger, press and hold, then drag. Tap a photo to add its caption.</p>
 <div id="grid"><div class="empty">YOUR GRID STARTS HERE<br><br>＋ ADD YOUR PHOTOS</div></div>
 <div class="controls">
 <button id="left">← MOVE LEFT</button><button id="right">MOVE RIGHT →</button><button id="remove">REMOVE PHOTO</button><button id="export" class="primary">EXPORT GRID PNG</button>
@@ -98,10 +98,39 @@ function render(){
   t.addEventListener('drop',e=>{e.preventDefault();const from=dragFrom>=0?dragFrom:Number(e.dataTransfer.getData('text/plain'));reorder(from,i)});
   t.addEventListener('dragend',()=>dragFrom=-1);
   let sx=0,sy=0;
-  t.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse')return;sx=e.clientX;sy=e.clientY;longActive=false;clearTimeout(longTimer);longTimer=setTimeout(()=>{longActive=true;dragFrom=i;t.style.opacity='.45';toast('Drag to another photo')},350)});
-  t.addEventListener('pointermove',e=>{if(e.pointerType==='mouse')return;if(!longActive&&Math.hypot(e.clientX-sx,e.clientY-sy)>12)clearTimeout(longTimer);if(longActive){const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('.tile');document.querySelectorAll('.drop-target').forEach(el=>el.classList.remove('drop-target'));if(target&&target!==t)target.classList.add('drop-target')}});
-  t.addEventListener('pointerup',e=>{clearTimeout(longTimer);if(e.pointerType==='mouse')return;if(longActive){const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('.tile');const to=target?Number(target.dataset.index):-1;t.style.opacity='';document.querySelectorAll('.drop-target').forEach(el=>el.classList.remove('drop-target'));if(to>=0&&to!==i)reorder(i,to);else{selected=i;syncCaption();render()}setTimeout(()=>longActive=false,60)}});
-  t.addEventListener('pointercancel',()=>{clearTimeout(longTimer);t.style.opacity='';longActive=false});
+  t.addEventListener('pointerdown',e=>{
+   if(e.pointerType==='mouse')return;
+   sx=e.clientX;sy=e.clientY;longActive=false;clearTimeout(longTimer);
+   // Apple Pencil: begin dragging immediately. Finger touch: use a short long-press.
+   if(e.pointerType==='pen'){
+    longActive=true;dragFrom=i;t.style.opacity='.45';t.style.touchAction='none';
+    try{t.setPointerCapture(e.pointerId)}catch(_){}
+    toast('Move the Apple Pencil to another photo');
+   }else{
+    longTimer=setTimeout(()=>{longActive=true;dragFrom=i;t.style.opacity='.45';t.style.touchAction='none';toast('Drag to another photo')},350);
+   }
+  });
+  t.addEventListener('pointermove',e=>{
+   if(e.pointerType==='mouse')return;
+   if(!longActive&&Math.hypot(e.clientX-sx,e.clientY-sy)>12)clearTimeout(longTimer);
+   if(longActive){
+    const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('.tile');
+    document.querySelectorAll('.drop-target').forEach(el=>el.classList.remove('drop-target'));
+    if(target&&target!==t)target.classList.add('drop-target');
+   }
+  });
+  t.addEventListener('pointerup',e=>{
+   clearTimeout(longTimer);if(e.pointerType==='mouse')return;
+   if(longActive){
+    const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('.tile');
+    const to=target?Number(target.dataset.index):-1;
+    t.style.opacity='';t.style.touchAction='';
+    document.querySelectorAll('.drop-target').forEach(el=>el.classList.remove('drop-target'));
+    if(to>=0&&to!==i)reorder(i,to);else{selected=i;syncCaption();render()}
+    setTimeout(()=>longActive=false,60);
+   }
+  });
+  t.addEventListener('pointercancel',()=>{clearTimeout(longTimer);t.style.opacity='';t.style.touchAction='';longActive=false});
   post.appendChild(t);const mini=document.createElement('div');mini.className='caption-mini';mini.textContent=p.caption||'＋ add caption';post.appendChild(mini);g.appendChild(post);
  });
  syncCaption();$('status').textContent=photos.length+' photos · '+Math.ceil(photos.length/3)+' rows · saved locally on this device'
