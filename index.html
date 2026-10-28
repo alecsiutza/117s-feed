@@ -1,0 +1,116 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f6f3ef">
+<title>117's feed</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f6f3ef;color:#28241f;font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:20px;max-width:900px;margin:auto}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:20px}
+h1{font:36px Georgia,serif;margin:0}
+p{color:#81796f;font-size:13px}
+button,.upload{padding:11px 14px;border:1px solid #ddd5cb;border-radius:10px;background:#fffdf9;color:#28241f;font-size:13px;cursor:pointer}
+.upload,.dark{background:#28241f;color:white}
+#grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px}
+.tile{aspect-ratio:1;position:relative;background:#e9e2d9;overflow:hidden;touch-action:pan-y}
+.tile img{width:100%;height:100%;object-fit:cover}
+.num{position:absolute;top:5px;left:5px;background:#0009;color:white;padding:3px 6px;border-radius:4px;font-size:11px}
+.tools{position:absolute;bottom:0;left:0;right:0;display:flex;justify-content:space-between;gap:2px;padding:4px;background:#0008}
+.tools button{padding:5px 8px;background:#fff;color:#222;border:0;border-radius:5px}
+.empty{grid-column:1/-1;text-align:center;padding:35px 10px;border:1px dashed #cfc4b8;color:#81796f}
+.controls{display:flex;flex-wrap:wrap;gap:8px;margin:15px 0}
+footer{text-align:center;font:italic 15px Georgia,serif;margin:30px 0 10px}
+small{color:#81796f;line-height:1.6}
+</style>
+</head>
+<body>
+<header>
+<div><h1>117's feed.</h1><p>Your grid. Your order. Your photos.</p></div>
+<label class="upload">+ Add photos<input id="files" type="file" accept="image/*" multiple hidden></label>
+</header>
+<p>Tap a photo to select it. Use the arrows to arrange your grid.</p>
+<div id="grid"><div class="empty">Your grid starts here.<br>Add your photos above.</div></div>
+<div class="controls">
+<button id="left">← Move left</button>
+<button id="right">Move right →</button>
+<button id="remove">Remove photo</button>
+<button id="export">Export grid image</button>
+</div>
+<small id="status">0 photos · Photos stay in your browser session. Export your grid before leaving.</small>
+<footer>created by an amazing brunette ♡</footer>
+<script>
+const $=id=>document.getElementById(id);
+let photos=[],selected=-1;
+function render(){
+ const g=$('grid');g.innerHTML='';
+ if(!photos.length){g.innerHTML='<div class="empty">Your grid starts here.<br>Add your photos above.</div>';return}
+ photos.forEach((p,i)=>{
+  const t=document.createElement('div');t.className='tile';
+  if(i===selected)t.style.outline='3px solid #bd654a';
+  const img=document.createElement('img');img.src=p.url;img.alt=p.name;t.appendChild(img);
+  const n=document.createElement('span');n.className='num';n.textContent=i+1;t.appendChild(n);
+  const tools=document.createElement('div');tools.className='tools';
+  [['←',-1],['→',1]].forEach(([label,d])=>{
+   const b=document.createElement('button');b.textContent=label;b.setAttribute('aria-label',d<0?'Move left':'Move right');
+   b.onclick=e=>{e.stopPropagation();selected=i;move(d)};tools.appendChild(b)
+  });
+  t.appendChild(tools);t.onclick=()=>{selected=i;render()};
+  t.draggable=true;
+  t.ondragstart=e=>e.dataTransfer.setData('text/plain',i);
+  t.ondragover=e=>e.preventDefault();
+  t.ondrop=e=>{e.preventDefault();const from=+e.dataTransfer.getData('text/plain');const [item]=photos.splice(from,1);photos.splice(i,0,item);selected=i;render()};
+  g.appendChild(t)
+ });
+ $('status').textContent=photos.length+' photos · '+Math.ceil(photos.length/3)+' rows';
+}
+function move(d){
+ if(selected<0||selected>=photos.length)return;
+ const j=selected+d;if(j<0||j>=photos.length)return;
+ [photos[selected],photos[j]]=[photos[j],photos[selected]];
+ selected=j;render()
+}
+$('files').onchange=async e=>{
+ const files=Array.from(e.target.files||[]);
+ for(const f of files){
+  if(!f.type.startsWith('image/'))continue;
+  const url=await new Promise(resolve=>{
+   const r=new FileReader();r.onload=()=>resolve(r.result);r.readAsDataURL(f)
+  });
+  photos.push({name:f.name,url})
+ }
+ selected=photos.length-1;render();e.target.value=''
+};
+$('left').onclick=()=>move(-1);
+$('right').onclick=()=>move(1);
+$('remove').onclick=()=>{
+ if(selected<0)return;
+ photos.splice(selected,1);selected=photos.length?Math.min(selected,photos.length-1):-1;render()
+};
+$('export').onclick=async()=>{
+ if(!photos.length)return;
+ const cell=300,gap=3,rows=Math.ceil(photos.length/3);
+ const c=document.createElement('canvas');
+ c.width=cell*3+gap*2;c.height=rows*cell+(rows-1)*gap;
+ const ctx=c.getContext('2d');
+ for(let i=0;i<photos.length;i++){
+  const im=new Image();im.src=photos[i].url;
+  await new Promise(resolve=>{im.onload=resolve;im.onerror=resolve});
+  if(!im.naturalWidth)continue;
+  const x=(i%3)*(cell+gap),y=Math.floor(i/3)*(cell+gap);
+  const s=Math.max(cell/im.width,cell/im.height),w=im.width*s,h=im.height*s;
+  ctx.save();ctx.beginPath();ctx.rect(x,y,cell,cell);ctx.clip();
+  ctx.drawImage(im,x+(cell-w)/2,y+(cell-h)/2,w,h);ctx.restore()
+ }
+ c.toBlob(blob=>{
+  if(!blob)return;
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='117s-feed.png';a.click()
+ })
+};
+render();
+</script>
+</body>
+</html>
